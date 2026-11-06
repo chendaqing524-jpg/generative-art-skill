@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>generative art</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="art"></canvas>
+<script src="gen.js"></script>
+<script>
+// Edit CONFIG for the job. Anything in the URL hash overrides it, e.g. page.html#seed=101&bg=%23F3EEE2
+// render.py passes the hash with --hash "seed=101".
+const CONFIG = {
+  seed: 417,
+  bg: '#121212',
+  // [color, weight]: one main color around 30%, the rest tapering off (rule 3)
+  palette: null,            // null = GenArt.PALETTE (made for dark grounds)
+  step: 4,                  // px per step at a 1080px-wide image (rule 4); scales with the canvas
+  gap: 5,                   // min px between lines at a 1080px-wide image (rule 4); scales with the canvas
+  fieldAmp: [0.3, 0.75],    // smaller = calmer, straighter lines
+  fieldFreq: [0.3, 1.2],    // smaller = longer, wider curves
+  density: 1,               // multiplies every class's tries
+  scale: 2                  // keep equal to render.py --scale
+};
+
+const hash = new URLSearchParams(location.hash.slice(1));
+for (const [key, v] of hash) {
+  if (key === 'bg') CONFIG.bg = v;
+  else if (key in CONFIG && typeof CONFIG[key] === 'number') CONFIG[key] = Number(v);
+}
+
+// Canvas size in CSS px. render.py passes w and h in the hash. Headless browsers report a smaller
+// viewport while scripts run and enlarge it just before the screenshot, so never size from the viewport
+// when rendering: a viewport-sized canvas would be drawn small and then stretched.
+const canvas = document.getElementById('art');
+const W = Number(hash.get('w')) || innerWidth, H = Number(hash.get('h')) || innerHeight;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+
+// Line widths, counts, step and gap scale with the canvas, largest class first (rule 5).
+// Reference: 540 CSS px wide = a 1080px image at scale 2.
+// Everything scales with k, so the same seed gives the same picture at any size (a thumbnail
+// is a scaled copy of the full image). Counts therefore follow the aspect ratio, not pixel area.
+const k = W / 540, relArea = 540 * (H / k);
+const classes = [
+  { widths: [W * 0.045, W * 0.034], tries: 12, maxSteps: 220, minLen: W * 0.15 },
+  { widths: [W * 0.02, W * 0.016], tries: Math.round(relArea / 2600), maxSteps: 200, minLen: W * 0.07 },
+  { widths: [W * 0.01, W * 0.0065, W * 0.004], tries: Math.round(relArea / 60), maxSteps: 160, minLen: W * 0.02 }
+].map(c => ({ ...c, tries: Math.round(c.tries * CONFIG.density) }));
+
+const lines = GenArt.draw(canvas, {
+  seed: CONFIG.seed, classes, bg: CONFIG.bg, pal: CONFIG.palette || GenArt.PALETTE,
+  step: CONFIG.step * k, gap: CONFIG.gap * k, cell: Math.max(2, 4 * k),
+  fieldAmp: CONFIG.fieldAmp, fieldFreq: CONFIG.fieldFreq, scale: CONFIG.scale
+});
+document.title = 'seed ' + CONFIG.seed + ' · ' + lines + ' lines · ' + W + 'x' + H + ' css px';
+</script>
+</body>
+</html>
